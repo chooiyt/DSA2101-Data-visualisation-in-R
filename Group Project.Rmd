@@ -1,0 +1,450 @@
+---
+title: "Deforestation"
+author: "DSA2101 Group Project"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, include = TRUE,
+                      fig.align = "center",  out.width = "80%")
+library(stringr)
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(viridis)
+library(scales)
+library(maps)
+library(gridExtra)
+```
+
+## Introduction
+
+The data that we will be working on comes from Our World in Data's article titled "Forests and Deforestation". In this project, we wish to answer an overarching question - "How has deforestation changed over the years?" We will be exploring 3 relevant sub questions to answer this broad question. Our visualisations use the `forest.csv`, `brazil_loss.csv` and `vegetable_oil.csv` datasets. 
+
+The `forest.csv` dataset shows the net change in forest area conversion every 5 years (negative values represent greater loss than gain in forest cover). The loss of Brazilian forest between 2001-2013 is deeply analysed in `brazil_loss.csv`, the production of vegetable oil is also represented in the `vegetable_oil.csv`. 
+
+We chose a broad question “How has deforestation changed over the years?” as we were interested in the factors with strongest correlation to deforestation as well as to further analyse the possible root causes behind these factors. In our visualisations, we selected data from 2005-2010 and 2010-2015 for analysis as we were limited to the data provided and decided to select years that allowed us to maximise the data given. Eventually, we came up with 3 different plots - multiple time series, maps and bar plots.
+
+## Question 1.1
+### Data cleaning and visualisation
+
+We first read in the necessary dataset and change the year variable for `brazil_loss.csv` to a Date type variable for further analysis.
+
+
+```{r reading data}
+forest <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-04-06/forest.csv')
+
+brazil_loss <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-04-06/brazil_loss.csv')
+
+vegetable_oil <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-04-06/vegetable_oil.csv')
+
+brazil_loss <- brazil_loss %>%
+  mutate(year = as.Date(paste(year, "-01-01", sep = ""), format = "%Y-%m-%d"))
+
+```
+
+**How much has each activity contributed to forest loss in Brazil from 2005 to 2010?**
+
+To visualise how much each type in the brazil_loss.csv affected total forest area loss in Brazil for each year, we first summed the forest area loss across all types for each year. 
+
+
+```{r brazil forest loss}
+brazil_loss <- brazil_loss %>%
+  filter(year >= "2005-01-01" & year <= "2010-01-01") %>%
+  # Transforming the data into tidy format
+  
+  pivot_longer(commercial_crops:small_scale_clearing, names_to = "activity", values_to = "loss")
+
+# Calculating total loss of forest each year from 2005 to 2010
+
+brazil_0510 <- brazil_loss %>%
+  group_by(year) %>%
+  summarise(total = sum(loss)) 
+
+# Changing the labels for easier interpretation
+
+legend_labels <- as_labeller(
+  c(`commercial_crops` = "Crop Commercialization", 
+    `fire` = "Forest Fires", 
+    `flooding_due_to_dams` = "Dam Floodings", 
+    `mining`= "Mining", 
+    `natural_disturbances` = "Natural Disturbances", 
+    `other_infrastructure` = "Other Infrastructures", 
+    `pasture` = "Pasture", 
+    `roads` = "Roads", 
+    `selective_logging` = "Selective Logging", 
+    `small_scale_clearing` = "Small Scale Forest Clearing", 
+    `tree_plantations_including_palm` = "Tree Plantations")) 
+
+# We are using the colourblind friendly viridis_pal for the activities and indianred for the total
+
+my_colors <- c(scales::viridis_pal()(11), "indianred")
+
+# Assigning each variable to their respective colours
+
+names(my_colors) <- c("commercial_crops", "fire", "flooding_due_to_dams", "mining", "natural_disturbances", "other_infrastructure", "pasture", "roads", "selective_logging", "small_scale_clearing", "tree_plantations_including_palm", "Total Forest Area") 
+
+```
+
+
+During our data exploratory stage, we realised that the forest area loss for each type has rather extreme values. We first tried plotting all the types in one time series, but there were too many overplotted lines, making it difficult to make meaningful comparisons. Additionally, since many of the forest area loss values were large, we decided to plot the area loss in millions of hectares. 
+
+
+We then plotted a **multiple times series** graph for each variable and the total forest area loss in Brazil in each year.
+
+
+```{r multiple time series}
+# Mapping activity to the color
+
+ggplot(brazil_loss, aes(x = year, y = loss/1000000, color = activity)) + 
+  # Add the lines for the activities
+  
+  geom_line(linewidth = 1.2) + 
+  # Add the line for total forest loss
+  
+  geom_line(data = brazil_0510, aes(y = total/1000000, color = "Total Forest Area"), linewidth = 1.2) + 
+  # Add relevant labels
+  
+  labs(title = "How much has each activity contributed to forest loss in Brazil from 2005 to 2010?", x = "Year", y = "Loss of forest area in 1,000,000 hectares", color = "") + 
+  # Specifying a break each year on the x axis for each activity
+  
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") + 
+  # Create subplots for each activity to make a multiple time series
+  
+  facet_wrap(~activity, labeller = legend_labels) + 
+  # Manually assigning the desired colors to each line
+  
+  scale_color_manual(values = my_colors, breaks = "Total Forest Area") + 
+  theme_minimal() +
+  # Bold the activity for each subplot, place the legend at the bottom right and tilt the years on the x axis to prevent overlaps
+  
+  theme(strip.text.x = element_text(face = "bold"),legend.position = c(0.9, 0.15), axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+
+Overall, there is a decreasing trend in the total forest area loss in Brazil from 2005 to 2010, with a drastic reduction of forest loss by more than a half in 2010 compared to 2005. This was due to a series of efforts to reduce deforestation - law enforcement campaigns, establishment of new protected areas, and credit restrictions on land owners involved in illegal deforestation (Soares-Filho et al., 2008). Taking a closer look at the reasons for forest area loss in Brazil during this period, the main causes were commercial crops, fire, pasture and small-scale forest clearing. 
+
+
+Among the main causes for forest area loss, pasture was the greatest contributor as it has the highest forest area loss throughout the years. The decreasing trend of forest area loss due to pasture closely follows the trend of total forest area loss. This implies strong correlation and we can conclude that pasture is the main contributor of forest area loss in Brazil. 
+
+
+There is a similar decreasing trend under the crop commercialization variable, however the scale of commercial crops is not as significant compared to pasture. For small-scale forest clearing, the overall resultant forest area loss stayed relatively constant throughout the years, suggesting little to no correlation with the decrease in Brazil’s total forest area loss. 
+
+
+On the other hand, forest area loss due to forest fires fluctuates throughout the years and this trend can be explained by the unpredictable weather due to overall climate change, hence there is a weak correlation between forest fires and total forest area loss in Brazil. 
+
+
+Analysis on Brazil’s forest area loss from 2005-2010 shows the effectiveness of the policies rolled out to reduce deforestation in Brazil during this period, as the policies correctly targeted the main cause of deforestation - land use for pasture. 
+
+
+## Question 1.2
+### Data cleaning and visualisation
+
+**Is there a correlation between total oil production and net forest conversion?**
+
+To address the question of how deforestation has evolved over the years, we opted to create two stacked **map** plots for comparison. The first plot showcases the total oil production in different countries from 2010 to 2015, while the second plot illustrates the net forest conversion in various countries in 2015 (the dataset values represent conversions over the period from 2010 to 2015).
+
+
+For the first graph, we began by cleaning the `vegetable_oil.csv` dataset. We observed that it contained many entities that were not countries. Since our focus was solely on the change in vegetable oil for each country, and our plot depicted a world map, omitting these values was necessary to prevent double plotting. Therefore, we filtered out entities with N.A values in the "code" column, as these entities typically represent non-countries. Additionally, we noticed that the entity "World" and a few others remained due to codes ending in "..OWID", despite not being countries, so we removed them as well. 
+
+
+```{r cleaning vegetable oil data}
+### Cleaning Vegetable Oil Data Set for Plot 2
+
+# Filter the data set for years 2010 to 2015 and remove missing code entries
+df_plot2_1 <- vegetable_oil %>%
+  filter(year %in% c(2010:2015)) %>%  
+  mutate(missing_code = is.na(code)) %>%
+  filter(!missing_code) %>%
+  
+  # Remove entries starting with "OWID"
+  mutate(StartsWith = startsWith(code, "OWID")) %>%
+  filter(!StartsWith) %>%
+  
+  # Group by entity and calculate total production
+  group_by(entity) %>%
+  summarise(total_prod = sum(production, na.rm = TRUE)) %>%
+  
+  # Remove entities with zero total production
+  filter(total_prod != 0) %>%
+  
+  # Arrange entities by total production in descending order
+  arrange(desc(total_prod))
+
+```
+
+
+We then created a new column representing the total oil produced by each country from 2010 to 2015 and plotted this on our first map. The colour intensity indicated the oil production level, with darker shades representing higher production and lighter shades representing lower production.
+
+
+```{r plot_2_1}
+# Load map data for the world
+world <- map_data("world")
+
+# Extract map data for specific countries based on unique entities in df_plot2_1
+countries <- map_data("world", region = unique(df_plot2_1$entity)) %>%
+  
+  # Join map data with df_plot2_1 to incorporate total production information
+  left_join(df_plot2_1, by = c("region" = "entity"))
+
+# Create Plot_2_1
+
+plot_2_1 <- ggplot(data = world, aes(x = long, y = lat, group = group)) +
+  
+  # Add polygons for world map with light gray fill and white borders
+  geom_polygon(fill = "lightgray", color = "white") +
+  
+  # Add polygons for countries with fill color based on total production divided by 1,000,000
+  geom_polygon(data = countries, aes(fill = total_prod/1000000)) +
+  
+  # Scale fill colors with continuous legend for total oil production
+  scale_fill_continuous(name = "Total Oil Production", low = "lightblue", high = "darkblue") +
+  
+  # Apply a minimal theme with axis elements and legend title removed
+  theme_minimal() +
+  theme(axis.title = element_blank(), legend.title = element_text(size = 9)) +
+  
+  # Add title for the plot
+  ggtitle("Total Oil Production from 2010 to 2014 by Country (in millions)") +
+  
+  # Add rectangles as background for annotating specific countries (China, Indonesia, Brazil)
+  # Add text labels to annotate these countries
+  
+  # Indonesia
+  annotate("rect", xmin = 98, xmax = 125, ymin = -8, ymax = 1, fill = "lightgrey", alpha = 0.8) +
+  geom_text(aes(x = 100, y = -5, label = "Indonesia"), color = "black", size = 2.05, hjust = 0, vjust = 0) + 
+  
+   # Brazil
+  annotate("rect", xmin = -59, xmax = -41, ymin = -16.5, ymax = -8, fill = "lightgrey", alpha = 0.9) +
+  geom_text(aes(x = -58, y = -14, label = "Brazil"), color = "black", size = 2.05, hjust = 0, vjust = 0) +
+  
+  # China
+  annotate("rect", xmin = 94, xmax = 112, ymin = 31, ymax = 38, fill = "lightgrey", alpha = 0.9) +
+  geom_text(aes(x = 95, y = 32, label = "China"), color = "black", size = 2.05, hjust = 0, vjust = 0) 
+
+```
+
+
+For the second graph, we utilised the previously cleaned `vegetable_oil` dataset and performed a left join with the `forest.csv` dataset to obtain data only for the filtered entities (countries). Subsequently, we filtered the data for the year 2015, as in this dataset, the values for 2015 represented net forest conversion over the period from 2010 to 2015. We then created a map plot illustrating net forest conversion across various countries. Darker shades indicated greater amounts of forest clearance (net forest conversion being negative), while lighter shades indicated countries with lesser net forest conversion—some even showing an increase in forest cover (less negative or even positive net forest conversion values).
+
+
+```{r plot_2_2}
+### Cleaning of Forest Data Set for Plot 2
+
+# Perform a left join of df1 and forest dataframes by the "entity" column,
+# arrange the data frame by net_forest_conversion, and filter for the year 2015
+df_plot2_2 <- df_plot2_1 %>%
+  left_join(forest, by = "entity") %>%
+  arrange(net_forest_conversion) %>%
+  filter(year == 2015)
+
+# Load map data for the world
+world <- map_data("world")
+
+# Extract map data for specific countries based on unique entities in df_plot2_2
+countries2 <- map_data("world", region = unique(df_plot2_2$entity)) %>%
+  
+  # Join map data with df_plot2_2 to incorporate net forest conversion information
+  left_join(df_plot2_2, by = c("region" = "entity"))
+
+# Define annotation text
+annotation_text = "China is an anomaly due to intense reforestation from 2000 onwards"
+
+# Create Plot_2_2
+
+plot_2_2 <- ggplot(data = world, aes(x = long, y = lat, group = group)) +
+  
+  # Add polygons for the world map with light gray fill and white borders
+  geom_polygon(fill = "lightgray", color = "white") +
+  
+  # Add polygons for countries with fill color based on net forest conversion divided by 1,000,000
+  geom_polygon(data = countries2, aes(fill = net_forest_conversion/1000000)) +
+  
+  # Scale fill colors with continuous legend for net forest conversion
+  scale_fill_continuous(name = "Net Forest Conversion", low = "darkblue", high = "lightblue") +
+  
+  # Apply a minimal theme with axis elements and legend title removed, and adjust lineheight for plot caption
+  theme_minimal() +
+  theme(axis.title = element_blank(), legend.title = element_text(size = 9),
+        plot.caption = element_text(lineheight = 0.8)) +
+  
+  # Add title for the plot
+  ggtitle ("Net Forest Conversion in 2015 by Country (in millions)") +
+  
+  # Add caption for the plot
+  labs(caption = "Note: Grey patches due to missing values for net forest conversion for some countries in 2015") +
+  
+  # Add rectangles as background for annotating specific countries (China, Indonesia, Brazil)
+  # Add text labels to annotate these countries
+  # Indonesia
+  annotate("rect", xmin = 98, xmax = 125, ymin = -8, ymax = 1, fill = "lightgrey", alpha = 0.8) +
+  geom_text(aes(x = 100, y = -5, label = "Indonesia"), color = "black", size = 2.05, hjust = 0, vjust = 0) + 
+  # Brazil
+  annotate("rect", xmin = -59, xmax = -41, ymin = -16, ymax = -7, fill = "lightgrey", alpha = 0.9) +
+  geom_text(aes(x = -58, y = -14, label = "Brazil"), color = "black", size = 2.05, hjust = 0, vjust = 0) + 
+  # China
+  annotate("rect", xmin = 94, xmax = 112, ymin = 31, ymax = 38, fill = "lightgrey", alpha = 0.9) +
+  geom_text(aes(x = 95, y = 32, label = "China"), color = "black", size = 2.05, hjust = 0, vjust = 0) + 
+  
+  # Add annotation text for China
+  geom_text(aes(x = 135, y = 9, label = str_wrap(annotation_text, width = 25)), color = "black", size = 2.1, hjust = 0, vjust = 0) +
+  
+  # Add arrow to highlight annotation
+  geom_segment(aes(x = 133, y = 16, xend = 114, yend = 30), arrow = arrow(type = "closed", length = unit(0.15, "inches")), color = "black")
+
+```
+
+
+Through these two plots, we aimed to discern any correlation between the total oil production and net forest conversion in a given country.
+
+
+```{r grid arrange}
+# Arrange plot_2_1 and plot_2_2 top and bottom
+grid.arrange(plot_2_1, plot_2_2)
+```
+
+
+The two map plots reveal a clear correlation between total oil production and net forest conversion.
+
+
+The darker regions in the top plot, indicating higher oil production, align closely with the darker regions in the bottom plot, signifying more negative values of net forest conversion. This correlation holds true for most areas, with notable exceptions in Africa, Europe, West Asia, and Australia, where forest data for the year 2015 was missing from the forest.csv dataset.
+
+
+Countries like Brazil, Southeast Asian nations, and India exemplify this correlation well. They rank among the world's top oil producers and exhibit higher negative values of net forest conversion. However, it's important to note that oil production isn't the sole factor influencing forest conversion in these countries; various other factors contribute as well. Our aim was to demonstrate a correlation between the two phenomena.
+
+
+Additionally, there are exceptions where countries exhibit high oil production alongside positive net forest conversion. China is a notable example due to its extensive reforestation efforts during the specified years (Tong et al., 2023). These exceptions highlight the complexity of factors influencing forest conversion beyond just oil production.
+
+
+## Question 1.3
+### Data cleaning and visualisation
+
+**What was the breakdown of specific crop oil productions among the top 10 oil-producing countries from 2010 to 2014?**
+
+Plot 3 follows from plot 2 but now we are diving into the top ten oil-producing countries to see what their specific crop oil productions were, to draw some insight into which specific crop oils might have a bigger correlation with deforestation.
+
+
+In our data cleaning process, we first focused on observations spanning from 2010 to 2014 to narrow our analysis to this specific time frame. The year 2015 was omitted as the data was not provided in the `vegetable_oil.csv` data set. To ensure consistency, we filtered out instances where the "code" column represented regions or continents rather than individual countries, as our analysis was centred on countries only. Additionally, we excluded entries where the "code" began with "OWID" since these were duplicates with separate country codes. Any missing values in the "production" column were then replaced with zeros.
+
+
+Next, we aggregated the data by "entity" (country) and "crop_oil" to calculate the total production of each crop oil type from 2010 to 2014, offering insight into the oil production dynamics of each country throughout this timeframe. Arranging the countries in descending order of their total oil production, we identified the top ten oil-producing nations and reordered them according to their production levels for clarity in our visualization.
+
+
+```{r top 10 oil producers}
+### Cleaning of Vegetable Oil Data Set for Plot 3
+
+# Filter the vegetable_oil data set to include observations only from the years 2010 to 2014
+df3 <- vegetable_oil %>%
+  filter(year %in% c(2010:2014)) %>%
+  
+  # Create a new variable 'missing_code' to check for missing values in the 'code' column
+  mutate(missing_code = is.na(code)) %>%
+  
+  # Filter out observations where 'code' is not missing
+  filter(!missing_code) %>%
+  
+  # Create a new variable 'StartsWith' to check if the 'code' column starts with "OWID"
+  mutate(StartsWith = startsWith(code, "OWID")) %>%
+  
+  # Filter out observations where 'code' does not start with "OWID"
+  filter(!StartsWith) %>%
+  
+  # Select columns from 'entity' to 'production'
+  select(entity:production) %>% 
+  
+  # Replace missing values in the 'production' column with 0
+  replace_na(list(production = 0)) %>%
+  
+  # Group the data by 'entity' and 'crop_oil', then summarize the total production for each combination
+  group_by(entity, crop_oil) %>%
+  summarize(total = sum(production), .groups = "keep") %>%
+  
+  # Ungroup the data and group only by 'entity', then calculate the total crop production for each 'entity'
+  ungroup() %>%
+  group_by(entity) %>%
+  mutate(total_crop_production = sum(total)) %>%
+  
+  # Reshape the data from wide to long format, where each row represents a unique combination of 'entity' and 'oil_production'
+  pivot_wider(names_from = crop_oil, values_from = total) %>%
+  arrange(desc(total_crop_production)) %>%
+  head(n = 10) %>%
+  pivot_longer(`Coconut (copra)`:Sunflower, names_to = "crop_oil", values_to = "oil_production") %>%
+  
+  # Ungroup the 'entity' variable and reorder it based on 'oil_production'
+  ungroup(entity) %>%
+  mutate(entity = reorder(entity, oil_production))
+
+```
+
+
+```{r bar plot}
+# Create a bar plot using ggplot, where 'entity' is on the x-axis, 'oil_production/100' is on the y-axis,
+# and 'crop_oil' determines the fill color of the bars
+ggplot(df3, aes(x = entity, y = oil_production/100, fill = crop_oil)) +
+
+  # Add bars to the plot, with 'position = "stack"' stacking the bars on top of each other,
+  # and 'stat = "identity"' ensuring that the heights of the bars correspond to the values in 'y'
+  geom_bar(position = "stack", stat = "identity") +
+  
+  # Flip the coordinate system so that 'entity' labels are displayed horizontally
+  coord_flip() +
+  
+  # Use the Viridis color palette to fill the bars, with discrete colors for different 'crop_oil' types
+  scale_fill_viridis(option = "viridis", discrete = TRUE) +
+  
+  # Add title, axis labels, and legend labels to the plot
+  labs(title = "Top 10 Oil Producing Countries in 2010 to 2014", 
+       x = "Country", 
+       y = "Breakdown of Total Oil Produced in 2010 to 2014", 
+       fill = "Crop Oil Types")
+
+```
+
+
+The visualization reveals Indonesia and Malaysia as the foremost oil producers, with palm oil dominating their total production. Following closely are China, the United States, Argentina, and Brazil, where soybean oil production predominates. Additionally, Germany focuses on rapeseed oil and Russia and Ukraine's oil production is dominated by sunflower crop oil. 
+
+
+From Plot 1, the deforestation in Brazil can be attributed to many other factors other than oil production so while it emerges as a top producer of oil, there is insufficient data to determine how significantly oil production plays a role in its deforestation. 
+
+
+Notably, Plot 2 highlights Indonesia's concerning trend of negative forest conversion in 2015 compared to previous years, despite its smaller land area relative to Brazil. The substantial palm oil production in Indonesia suggests a potential correlation with deforestation, raising the need for sustainable production practices in this sector. The significant production of palm oil in Indonesia and Malaysia also suggests a robust demand compared to other crop oils, as well as a potential specialization in this sector for Indonesia and Malaysia.
+
+
+The popularity of palm oil and soybean oil underscores their significance in the global agricultural economy. The widespread production of soybean oil in major countries like China, the United States, Argentina, and Brazil suggests its high market demand. Given the scale of production for palm oil and soybean oil, targeting sustainable practices in these sectors could be pivotal in addressing deforestation concerns and promoting environmental conservation efforts.
+
+
+## Reference
+
+```{r}
+# Data SOurce URL
+
+"https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-04-06/readme.md"
+
+# Soares-Filho BS , Dietzsch L , Moutinho P , Falieri A , Rodrigues H , et al 2008. Reducing carbon emissions from deforestation: The role of ARPA’s protected areas in the Brazilian Amazon. Belém, Brazil: IPAM. 
+
+"http://d3nehc6yl9qzo4.cloudfront.net/downloads/arpa_relatorio_port_1_.pdf"
+
+#Tong, X., Brandt, M., Yue, Y., Zhang, X., Fensholt, R., Ciais, P., Wang, K., Liu, S., Zhang, W., Mao, C., & Jepsen, M. R. (2023, July 18). Reforestation policies around 2000 in southern China led to forest densification and expansion in the 2010s. Nature News. 
+
+"https://www.nature.com/articles/s43247-023-00923-1"
+
+```
+
+## About
+
+This project was developed for DSA2101 Essential Data Analytics Tools: Data Visualisation at the National University of Singapore (NUS). The team is comprised of the following members:
+
+```{r members}
+name <- c("Agarwal Paridhi", "Ng Jing Xuan", "Evie Low", "Chooi Yu Ting", "Su Pei Yun")
+
+year <- rep("Year 2", 5)
+
+major <- c("Data Science and Economics XDP", "Data Science and Economics XDP", "Data Science and Economics XDP", "Data Science and Analytics", "Data Science and Analytics")
+
+responsibilities <- c("Plots 2,3 (Write up: Plot 2)", "Plots 2,3 (Write up: Plot 3)", "Plots 2,3 (Write up: Plot 2)", "Plot 1 (Write up: Introduction, Plot 1)", "Plot 1 (Write up: Plot 1)")
+
+df <- cbind(name, year, major, responsibilities)
+
+df
+```
